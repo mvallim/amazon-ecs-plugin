@@ -78,7 +78,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     @Nonnull
     private final String image;
     /**
-     * Slave remote FS
+     * Agent remote FS
      */
     @Nullable
     private final String remoteFSRoot;
@@ -160,7 +160,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     private String entrypoint;
 
     /**
-     * ARN of the IAM role to use for the slave ECS task
+     * ARN of the IAM role to use for the agent ECS task
      *
      * @see RegisterTaskDefinitionRequest#withTaskRoleArn(String)
      */
@@ -168,7 +168,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     private String taskrole;
 
     /**
-     * ARN of the IAM role to use for the slave ECS task
+     * ARN of the IAM role to use for the agent ECS task
      *
      * @see RegisterTaskDefinitionRequest#withExecutionRoleArn(String)
      */
@@ -176,12 +176,12 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     private String executionRole;
     
 	/**
-	 * ARN of the Secrets Manager to use for the slave ECS task
+	 * ARN of the Secrets Manager to use for the agent ECS task
 	 *
 	 * @see ContainerDefinition#withRepositoryCredentials(RepositoryCredentials)
 	 */
 	@CheckForNull
-	private String secretManagerArn;    
+	private String repositoryCredentials;    
 
     /**
      * JVM arguments to start slave.jar
@@ -246,7 +246,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
                            @Nullable String label,
                            @Nullable String taskDefinitionOverride,
                            @Nonnull String image,
-                           @Nullable final String secretManagerArn,
+                           @Nullable final String repositoryCredentials,
                            @Nonnull String launchType,
                            @Nonnull String networkMode,
                            @Nullable String remoteFSRoot,
@@ -280,7 +280,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
 
         this.label = label;
         this.image = image;
-        this.secretManagerArn = StringUtils.trimToNull(secretManagerArn);
+        this.repositoryCredentials = StringUtils.trimToNull(repositoryCredentials);
         this.remoteFSRoot = remoteFSRoot;
         this.memory = memory;
         this.memoryReservation = memoryReservation;
@@ -310,8 +310,8 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     }
 
 	@DataBoundSetter
-	public void setSecretManagerArn(final String secretManagerArn) {
-		this.secretManagerArn = StringUtils.trimToNull(secretManagerArn);
+	public void setRepositoryCredentials(final String repositoryCredentials) {
+		this.repositoryCredentials = StringUtils.trimToNull(repositoryCredentials);
 	}    
 
     @DataBoundSetter
@@ -347,10 +347,6 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
 
     public boolean isFargate() {
         return StringUtils.trimToNull(this.launchType) != null && launchType.equals(LaunchType.FARGATE.toString());
-    }
-
-    public boolean isAwsVpcNetworkMode() {
-        return getLaunchType().equals(LaunchType.FARGATE.toString()) || getNetworkMode().equals(NetworkMode.Awsvpc.toString());
     }
 
     public String getLabel() {
@@ -409,8 +405,8 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
         return executionRole;
     }
 
-	public String getSecretManagerArn() {
-		return secretManagerArn;
+	public String getRepositoryCredentials() {
+		return repositoryCredentials;
 	}
 	
     public String getJvmArgs() {
@@ -433,9 +429,6 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     }
 
     public String getNetworkMode() {
-        if (StringUtils.trimToNull(this.networkMode) == null) {
-            return NetworkMode.Bridge.toString();
-        }
         return networkMode;
     }
 
@@ -705,7 +698,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
     }
 
     public String getDisplayName() {
-        return "ECS Slave " + label;
+        return "ECS Agent " + label;
     }
 
     @Extension
@@ -728,9 +721,14 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> {
 
         public ListBoxModel doFillNetworkModeItems() {
             final ListBoxModel options = new ListBoxModel();
+
+            //Need to support Windows Containers - Need to allow Default which equal Null
+            options.add("default");
+
             for (NetworkMode networkMode: NetworkMode.values()) {
                 options.add(networkMode.toString());
             }
+
             return options;
         }
 
