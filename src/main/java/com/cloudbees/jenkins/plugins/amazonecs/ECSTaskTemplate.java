@@ -128,6 +128,16 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
     private final int cpu;
 
     /**
+     * Sets the size of Share Memory (in MiB) using the
+     * <code>--shm-size</code> option for the container.
+     * A container instance has 64mb <code>/dev/shm</code> size
+     * by default.
+     *
+     * @see LinuxParameters#withSharedMemorySize(Integer)
+     */
+    private final int sharedMemorySize;
+
+    /**
      * Subnets to be assigned on the awsvpc network when using Fargate
      *
      * @see AwsVpcConfiguration#setSubnets(Collection)
@@ -270,8 +280,10 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
                            @Nullable List<ExtraHostEntry> extraHosts,
                            @Nullable List<MountPointEntry> mountPoints,
                            @Nullable List<PortMappingEntry> portMappings,
+                           @Nullable String executionRole,
                            @Nullable String taskrole,
-                           @Nullable String inheritFrom) {
+                           @Nullable String inheritFrom,
+                           int sharedMemorySize) {
         // if the user enters a task definition override, always prefer to use it, rather than the jenkins template.
         if (taskDefinitionOverride != null && !taskDefinitionOverride.trim().isEmpty()) {
             this.taskDefinitionOverride = taskDefinitionOverride.trim();
@@ -306,8 +318,10 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
         this.extraHosts = extraHosts;
         this.mountPoints = mountPoints;
         this.portMappings = portMappings;
+        this.executionRole = executionRole;
         this.taskrole = taskrole;
         this.inheritFrom = inheritFrom;
+        this.sharedMemorySize = sharedMemorySize;
     }
 
     @DataBoundSetter
@@ -392,6 +406,8 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
     public int getCpu() {
         return cpu;
     }
+
+    public int getSharedMemorySize() { return sharedMemorySize; }
 
     public String getSubnets() {
         return subnets;
@@ -530,6 +546,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
         int memory = this.memory == 0 ? parent.getMemory() : this.memory;
         int memoryReservation = this.memoryReservation == 0 ? parent.getMemoryReservation() : this.memoryReservation;
         int cpu = this.cpu == 0 ? parent.getCpu() : this.cpu;
+        int sharedMemorySize = this.sharedMemorySize == 0 ? parent.getSharedMemorySize() : this.sharedMemorySize;
         String subnets = Strings.isNullOrEmpty(this.subnets) ? parent.getSubnets() : this.subnets;
         String securityGroups = Strings.isNullOrEmpty(this.securityGroups) ? parent.getSecurityGroups() : this.securityGroups;
         boolean assignPublicIp = this.assignPublicIp ? this.assignPublicIp : parent.getAssignPublicIp();
@@ -544,6 +561,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
         List<MountPointEntry> mountPoints = CollectionUtils.isEmpty(this.mountPoints) ? parent.getMountPoints() : this.mountPoints;
         List<PortMappingEntry> portMappings = CollectionUtils.isEmpty(this.portMappings) ? parent.getPortMappings() : this.portMappings;
 
+        String executionRole = Strings.isNullOrEmpty(this.executionRole) ? parent.getExecutionRole() : this.executionRole;
         String taskrole = Strings.isNullOrEmpty(this.taskrole) ? parent.getTaskrole() : this.taskrole;
 
         ECSTaskTemplate merged = new ECSTaskTemplate(templateName,
@@ -567,8 +585,10 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
                                                        extraHosts,
                                                        mountPoints,
                                                        portMappings,
+                                                       executionRole,
                                                        taskrole,
-                                                       null);
+                                                       null,
+                                                        sharedMemorySize);
         merged.setLogDriver(logDriver);
 
         return merged;

@@ -34,11 +34,13 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
     private int memory;
     private int memoryReservation;
     private int cpu;
+    private int sharedMemorySize;
     private String subnets;
     private String securityGroups;
     private boolean assignPublicIp;
     private boolean privileged;
     private String containerUser;
+    private String executionRole;
     private String taskrole;
     private String inheritFrom;
     private String logDriver;
@@ -144,6 +146,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         overrides.add("cpu");
     }
 
+    public int getSharedMemorySize() {
+        return sharedMemorySize;
+    }
+
+    @DataBoundSetter
+    public void setSharedMemorySize(int sharedMemorySize) {
+        this.sharedMemorySize = sharedMemorySize;
+        overrides.add("sharedMemorySize");
+    }
+
     public String getSubnets() {
         return subnets;
     }
@@ -192,6 +204,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
     public void setContainerUser(String containerUser) {
         this.containerUser = containerUser;
         overrides.add("containerUser");
+    }
+
+    public String getExecutionRole() {
+        return executionRole;
+    }
+
+    @DataBoundSetter
+    public void setExecutionRole(String executionRole) {
+        this.executionRole = executionRole;
+        overrides.add("executionRole");
     }
 
     public String getTaskrole() {
@@ -314,6 +336,10 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
             argMap.put("cpu", cpu);
         }
 
+        if (sharedMemorySize != 0) {
+            argMap.put("sharedMemorySize", sharedMemorySize);
+        }
+
         if (!StringUtils.isEmpty(subnets)) {
             argMap.put("subnets", subnets);
         }
@@ -327,6 +353,10 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
 
         if (!StringUtils.isEmpty(containerUser)) {
             argMap.put("containerUser", containerUser);
+        }
+
+        if (!StringUtils.isEmpty(executionRole)) {
+            argMap.put("executionRole", executionRole);
         }
 
         if (!StringUtils.isEmpty(taskrole)) {

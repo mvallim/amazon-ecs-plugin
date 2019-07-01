@@ -35,7 +35,7 @@
       <f:textbox />
   </f:entry>
   <f:entry title="${%Docker Image}" field="image">
-    <f:textbox default="jenkinsci/jnlp-slave" />
+    <f:textbox default="jenkins/jnlp-slave" />
   </f:entry>
   <f:entry title="${%Secrets manager ARN}" field="repositoryCredentials">
     <f:textbox />
@@ -68,6 +68,9 @@
     <f:checkbox />
   </f:entry>
   <f:advanced>
+    <f:entry title="${%Shared Memory Size (Mb)}" field="sharedMemorySize" description="The size of the Shared Application Memory (/dev/shm) in Mb. Docker defaults this to 64Mb.">
+      <f:textbox />
+    </f:entry>
     <f:entry title="${%DNS Search Domains}" field="dnsSearchDomains">
       <f:textbox />
     </f:entry>
