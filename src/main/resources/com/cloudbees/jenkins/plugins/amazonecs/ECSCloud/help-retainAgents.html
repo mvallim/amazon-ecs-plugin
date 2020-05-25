@@ -23,10 +23,6 @@
   ~
   -->
 
-Docker image to run as a jenkins agent.
+Enable this setting to keep agents online after running a job. Keeping agents online can help greatly speed up job start time, at the expense of keeping the ECS tasks running constantly. If your jobs running on these agents write files to disk, it's a good idea to use the <a href="https://plugins.jenkins.io/ws-cleanup/">Workspace Cleanup</a> plugin.
 <p>
-This image will be ran passing command "<code>-url [jenkins url] [slave jnlp secret] [slave name]</code>". Those are
-the parameters expected by
-<a href="https://github.com/jenkinsci/remoting/blob/master/src/main/java/hudson/remoting/jnlp/Main.java">Jenkins remoting JNLP launcher</a>.
-You can use or inherit from  <a href="https://hub.docker.com/r/jenkins/inbound-agent/">jenkins/inbound-agent</a>
-Docker image so you dont' have to wory about those implementation details.
+Retained agents are still subject to termination if they remain idle for "Container Cleanup Timeout" minutes.

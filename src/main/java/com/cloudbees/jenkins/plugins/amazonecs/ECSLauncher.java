@@ -90,7 +90,7 @@ public class ECSLauncher extends JNLPLauncher {
         ECSComputer ecsComputer = (ECSComputer) computer;
         computer.setAcceptingTasks(false);
 
-        ECSSlave agent = (ECSSlave)ecsComputer.getNode();
+        ECSSlave agent = ecsComputer.getNode();
         if (agent == null) {
             throw new IllegalStateException("Node has been removed, cannot launch " + computer.getName());
         }
@@ -104,22 +104,22 @@ public class ECSLauncher extends JNLPLauncher {
         try {
             LOGGER.log(Level.FINE, "[{0}]: Creating Task in cluster {1}", new Object[]{agent.getNodeName(), agent.getClusterArn()});
 
-            TaskDefinition taskDefinition = getTaskDefinition(agent.getNodeName(), agent.getTemplate(), cloud, ecsService);
+            TaskDefinition taskDefinition = ecsService.registerTemplate(cloud.getDisplayName(), agent.getTemplate());
+            Task startedTask = runECSTask(taskDefinition, cloud, agent.getTemplate(), ecsService, agent);
 
-            Task task = runECSTask(taskDefinition, cloud, agent.getTemplate(), ecsService, agent);
-
-            LOGGER.log(INFO, "[{0}]: TaskArn: {1}", new Object[]{agent.getNodeName(), task.getTaskArn()});
-            LOGGER.log(INFO, "[{0}]: TaskDefinitionArn: {1}", new Object[]{agent.getNodeName(), task.getTaskDefinitionArn()});
-            LOGGER.log(INFO, "[{0}]: ClusterArn: {1}", new Object[]{agent.getNodeName(), task.getClusterArn()});
-            LOGGER.log(INFO, "[{0}]: ContainerInstanceArn: {1}", new Object[]{agent.getNodeName(), task.getContainerInstanceArn()});
+            LOGGER.log(INFO, "[{0}]: TaskArn: {1}", new Object[]{agent.getNodeName(), startedTask.getTaskArn()});
+            LOGGER.log(INFO, "[{0}]: TaskDefinitionArn: {1}", new Object[]{agent.getNodeName(), startedTask.getTaskDefinitionArn()});
+            LOGGER.log(INFO, "[{0}]: ClusterArn: {1}", new Object[]{agent.getNodeName(), startedTask.getClusterArn()});
+            LOGGER.log(INFO, "[{0}]: ContainerInstanceArn: {1}", new Object[]{agent.getNodeName(), startedTask.getContainerInstanceArn()});
 
             long timeout = System.currentTimeMillis() + Duration.ofSeconds(cloud.getSlaveTimeoutInSeconds()).toMillis();
 
             boolean taskRunning = false;
+            Task task = null;
             while (System.currentTimeMillis() < timeout) {
 
                 // Wait while PENDING
-                task = ecsService.describeTask(task.getTaskArn(), task.getClusterArn());
+                task = ecsService.describeTask(startedTask.getTaskArn(), startedTask.getClusterArn());
 
                 if (task != null) {
                     String taskStatus = task.getLastStatus();
@@ -152,19 +152,24 @@ public class ECSLauncher extends JNLPLauncher {
 
             // now wait for agent to be online
             while (System.currentTimeMillis() < timeout) {
+                SlaveComputer agentComputer = agent.getComputer();
 
-                if (agent.getComputer() == null) {
+                if (agentComputer == null) {
                     throw new IllegalStateException("Node was deleted, computer is null");
                 }
-                if (agent.getComputer().isOnline()) {
+                if (agentComputer.isOnline()) {
                     break;
                 }
                 LOGGER.log(INFO, "[{0}]: Waiting for agent to connect", new Object[]{agent.getNodeName()});
                 logger.printf("Waiting for agent to connect: %1$s%n", agent.getNodeName());
                 Thread.sleep(1000);
             }
+            SlaveComputer agentComputer = agent.getComputer();
+            if (agentComputer == null) {
+                throw new IllegalStateException("Node was deleted, computer is null");
+            }
 
-            if (!agent.getComputer().isOnline()) {
+            if (!agentComputer.isOnline()) {
                 throw new IllegalStateException("Agent is not connected");
             }
             LOGGER.log(INFO, "[{0}]: Agent connected", new Object[]{agent.getNodeName()});
@@ -176,9 +181,7 @@ public class ECSLauncher extends JNLPLauncher {
             LOGGER.log(Level.FINER, "[{0}]: Removing Jenkins node", agent.getNodeName());
             try {
                 agent.terminate();
-            } catch (InterruptedException e) {
-                LOGGER.log(Level.WARNING, "Unable to remove Jenkins node", e);
-            } catch (IOException e) {
+            } catch (InterruptedException | IOException e) {
                 LOGGER.log(Level.WARNING, "Unable to remove Jenkins node", e);
             }
             throw Throwables.propagate(ex);
@@ -194,27 +197,7 @@ public class ECSLauncher extends JNLPLauncher {
         }
     }
 
-    private TaskDefinition getTaskDefinition(String nodeName, ECSTaskTemplate template, ECSCloud cloud, ECSService ecsService) {
-        TaskDefinition taskDefinition;
-
-        if (template.getTaskDefinitionOverride() == null) {
-            taskDefinition = ecsService.registerTemplate(cloud, template);
-
-        } else {
-            LOGGER.log(Level.FINE, "[{0}]: Attempting to find task definition family or ARN: {1}", new Object[] {nodeName, template.getTaskDefinitionOverride()});
-
-            taskDefinition = ecsService.findTaskDefinition(template.getTaskDefinitionOverride());
-            if (taskDefinition == null) {
-                throw new RuntimeException("Could not find task definition family or ARN: " + template.getTaskDefinitionOverride());
-            }
-
-            LOGGER.log(Level.FINE, "[{0}]: Found task definition: {1}", new Object[] {nodeName, taskDefinition.getTaskDefinitionArn()});
-        }
-
-        return taskDefinition;
-    }
-
-    private Task runECSTask(TaskDefinition taskDefinition, ECSCloud cloud, ECSTaskTemplate template, ECSService ecsService, ECSSlave agent) throws IOException, AbortException {
+    private Task runECSTask(TaskDefinition taskDefinition, ECSCloud cloud, ECSTaskTemplate template, ECSService ecsService, ECSSlave agent) throws IOException {
 
         LOGGER.log(Level.INFO, "[{0}]: Starting agent with task definition {1}}", new Object[]{agent.getNodeName(), taskDefinition.getTaskDefinitionArn()});
 
@@ -238,15 +221,19 @@ public class ECSLauncher extends JNLPLauncher {
     }
 
     private Collection<String> getDockerRunCommand(ECSSlave slave, String jenkinsUrl) {
-        Collection<String> command = new ArrayList<String>();
+        Collection<String> command = new ArrayList<>();
         command.add("-url");
         command.add(jenkinsUrl);
         if (StringUtils.isNotBlank(tunnel)) {
             command.add("-tunnel");
             command.add(tunnel);
         }
-        command.add(slave.getComputer().getJnlpMac());
-        command.add(slave.getComputer().getName());
+        SlaveComputer agent = slave.getComputer();
+        if (agent == null) {
+            throw new IllegalStateException("Node was deleted, computer is null");
+        }
+        command.add(agent.getJnlpMac());
+        command.add(agent.getName());
         return command;
     }
 }

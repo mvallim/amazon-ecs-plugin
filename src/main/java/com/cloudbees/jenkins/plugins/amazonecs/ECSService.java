@@ -28,10 +28,12 @@ package com.cloudbees.jenkins.plugins.amazonecs;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import javax.annotation.CheckForNull;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import com.amazonaws.ClientConfiguration;
@@ -41,8 +43,6 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ecs.AmazonECS;
 import com.amazonaws.services.ecs.AmazonECSClientBuilder;
 import com.amazonaws.services.ecs.model.*;
-import com.amazonaws.services.ecs.model.PlacementStrategy;
-import com.amazonaws.services.ecs.model.PlacementStrategyType;
 import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsHelper;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 
@@ -52,6 +52,7 @@ import org.apache.commons.lang.StringUtils;
 import hudson.AbortException;
 import hudson.ProxyConfiguration;
 import jenkins.model.Jenkins;
+import hudson.slaves.SlaveComputer;
 
 /**
  * Encapsulates interactions with Amazon ECS.
@@ -61,45 +62,47 @@ import jenkins.model.Jenkins;
 class ECSService {
     private static final Logger LOGGER = Logger.getLogger(ECSCloud.class.getName());
 
-    private String credentialsId;
-
-    private String regionName;
+    @Nonnull
+    private final Supplier<AmazonECS> clientSupplier;
 
     public ECSService(String credentialsId, String regionName) {
-        super();
-        this.credentialsId = credentialsId;
-        this.regionName = regionName;
+        this.clientSupplier = () -> {
+            ProxyConfiguration proxy = Jenkins.get().proxy;
+            ClientConfiguration clientConfiguration = new ClientConfiguration();
+
+            if (proxy != null) {
+                clientConfiguration.setProxyHost(proxy.name);
+                clientConfiguration.setProxyPort(proxy.port);
+                clientConfiguration.setProxyUsername(proxy.getUserName());
+                clientConfiguration.setProxyPassword(proxy.getPassword());
+            }
+
+            AmazonECSClientBuilder builder = AmazonECSClientBuilder
+                    .standard()
+                    .withClientConfiguration(clientConfiguration)
+                    .withRegion(regionName);
+
+            AmazonWebServicesCredentials credentials = getCredentials(credentialsId);
+            if (credentials != null) {
+                if (LOGGER.isLoggable(Level.FINE)) {
+                    String awsAccessKeyId = credentials.getCredentials().getAWSAccessKeyId();
+                    String obfuscatedAccessKeyId = StringUtils.left(awsAccessKeyId, 4) + StringUtils.repeat("*", awsAccessKeyId.length() - (2 * 4)) + StringUtils.right(awsAccessKeyId, 4);
+                    LOGGER.log(Level.FINE, "Connect to Amazon ECS with IAM Access Key {1}", new Object[]{obfuscatedAccessKeyId});
+                }
+                builder
+                        .withCredentials(credentials);
+            }
+            LOGGER.log(Level.FINE, "Selected Region: {0}", regionName);
+
+            return builder.build();
+        };
+    }
+    public ECSService(Supplier<AmazonECS> clientSupplier){
+        this.clientSupplier = clientSupplier;
     }
 
     AmazonECS getAmazonECSClient() {
-        ProxyConfiguration proxy = Jenkins.get().proxy;
-        ClientConfiguration clientConfiguration = new ClientConfiguration();
-
-        if (proxy != null) {
-            clientConfiguration.setProxyHost(proxy.name);
-            clientConfiguration.setProxyPort(proxy.port);
-            clientConfiguration.setProxyUsername(proxy.getUserName());
-            clientConfiguration.setProxyPassword(proxy.getPassword());
-        }
-
-        AmazonECSClientBuilder builder = AmazonECSClientBuilder
-                .standard()
-                .withClientConfiguration(clientConfiguration)
-                .withRegion(regionName);
-
-        AmazonWebServicesCredentials credentials = getCredentials(credentialsId);
-        if (credentials != null) {
-            if (LOGGER.isLoggable(Level.FINE)) {
-                String awsAccessKeyId = credentials.getCredentials().getAWSAccessKeyId();
-                String obfuscatedAccessKeyId = StringUtils.left(awsAccessKeyId, 4) + StringUtils.repeat("*", awsAccessKeyId.length() - (2 * 4)) + StringUtils.right(awsAccessKeyId, 4);
-                LOGGER.log(Level.FINE, "Connect to Amazon ECS with IAM Access Key {1}", new Object[]{obfuscatedAccessKeyId});
-            }
-            builder
-                    .withCredentials(credentials);
-        }
-        LOGGER.log(Level.FINE, "Selected Region: {0}", regionName);
-
-        return builder.build();
+        return clientSupplier.get();
     }
 
     Region getRegion(String regionName) {
@@ -116,10 +119,9 @@ class ECSService {
     }
 
     public Task describeTask(String taskArn, String clusterArn) {
-        final AmazonECS client = getAmazonECSClient();
+        final AmazonECS client = clientSupplier.get();
 
         DescribeTasksResult result = client.describeTasks(new DescribeTasksRequest().withCluster(clusterArn).withTasks(taskArn));
-
         if (result.getTasks().size() == 0) {
             return null;
         } else {
@@ -128,7 +130,7 @@ class ECSService {
     }
 
     public void stopTask(String taskArn, String clusterArn) {
-        final AmazonECS client = getAmazonECSClient();
+        final AmazonECS client = clientSupplier.get();
 
         LOGGER.log(Level.INFO, "Delete ECS agent task: {0}", taskArn);
         try {
@@ -141,11 +143,33 @@ class ECSService {
     /**
      * Looks whether the latest task definition matches the desired one. If yes, returns the full TaskDefinition of the existing one.
      * If no, register a new task definition with desired parameters and returns the new TaskDefinition.
+     * If a TaskDefinitionOverride is set, we only look to see if the task definition exists and return it.
      */
-    TaskDefinition registerTemplate(final ECSCloud cloud, final ECSTaskTemplate template) {
-        final AmazonECS client = getAmazonECSClient();
+    TaskDefinition registerTemplate(final String cloudName, final ECSTaskTemplate template) {
+        if (template.getTaskDefinitionOverride() != null){
+            TaskDefinition overrideTaskDefinition = findTaskDefinition(template.getTaskDefinitionOverride());
+            if (overrideTaskDefinition == null) {
+                LOGGER.log(Level.SEVERE, "Could not find task definition override: {0} for template: {1}", new Object[] {template.getTaskDefinitionOverride(), template.getDisplayName()});
+                throw new RuntimeException("Could not find task definition override family or ARN: " + template.getTaskDefinitionOverride());
+            }
 
-        String familyName = fullQualifiedTemplateName(cloud, template);
+            LOGGER.log(Level.FINE, "Found task definition override: {0}", new Object[] {overrideTaskDefinition.getTaskDefinitionArn()});
+            return overrideTaskDefinition;
+        }
+
+        if (template.getDynamicTaskDefinition() != null){
+            TaskDefinition overrideTaskDefinition = findTaskDefinition(template.getDynamicTaskDefinition());
+            if (overrideTaskDefinition != null) {
+                LOGGER.log(Level.FINE, "Found dynamic agent task definition: {0}", new Object[] {overrideTaskDefinition.getTaskDefinitionArn()});
+                return overrideTaskDefinition;
+            }
+
+            LOGGER.log(Level.WARNING, "Could not find dynamic agent's task definition family or ARN: {0}, creating a new one.", new Object[] {template.getDynamicTaskDefinition()});
+        }
+
+        final AmazonECS client = clientSupplier.get();
+
+        String familyName = fullQualifiedTemplateName(cloudName, template);
         final ContainerDefinition def = new ContainerDefinition()
                 .withName(familyName)
                 .withImage(template.getImage())
@@ -269,25 +293,41 @@ class ECSService {
             final RegisterTaskDefinitionResult result = client.registerTaskDefinition(request);
             LOGGER.log(Level.FINE, "Created Task Definition {0}: {1}", new Object[]{result.getTaskDefinition(), request});
             LOGGER.log(Level.INFO, "Created Task Definition: {0}", new Object[]{result.getTaskDefinition()});
+
+            if (template.getDynamicTaskDefinition() != null){
+                // if we couldn't find the the dynamic task definition earlier, we'll set it
+                // again here so it gets cleaned up once the task is finished
+                template.setDynamicTaskDefinition(result.getTaskDefinition().getTaskDefinitionArn());
+            }
             return result.getTaskDefinition();
         }
     }
 
-    void removeTemplate(final ECSCloud cloud, final ECSTaskTemplate template) {
-        AmazonECS client = getAmazonECSClient();
+    /**
+     * Deregisters a task definition created for a template we are deleting. 
+     * It's expected that taskDefinitionArn is set
+     * We don't attempt to de-register anything if TaskDefinitionOverride isn't null
+     * 
+     * @param template       The template used to create the task definition
+     * @return The task definition if found, otherwise null
+     */
+    void removeTemplate(final ECSTaskTemplate template) {
+        AmazonECS client = clientSupplier.get();
+        
+        //no task definition was created for this template to delete
+        if (template.getTaskDefinitionOverride() != null) {
+            return;
+        }
 
-        String familyName = fullQualifiedTemplateName(cloud, template);
-
-        int revision = findTaskDefinition(familyName).getRevision();
-
+        String taskDefinitionArn = template.getDynamicTaskDefinition();
         try {
-            client.deregisterTaskDefinition(
-                    new DeregisterTaskDefinitionRequest()
-                            .withTaskDefinition(familyName + ":" + revision));
+            if (taskDefinitionArn != null) {
+                client.deregisterTaskDefinition(
+                        new DeregisterTaskDefinitionRequest().withTaskDefinition(taskDefinitionArn));
+            }
 
         } catch (ClientException e) {
-            LOGGER.log(Level.FINE, "Error removing task definition: " + familyName + ":" + revision, e);
-            LOGGER.log(Level.INFO, "Error removing task definition: " + familyName + ":" + revision);
+            LOGGER.log(Level.WARNING, "Error de-registering task definition: " + taskDefinitionArn, e);
         }
     }
 
@@ -296,12 +336,12 @@ class ECSService {
      * The parameter may be a task definition family, family with revision, or full task definition ARN.
      */
     TaskDefinition findTaskDefinition(String familyOrArn) {
-        AmazonECS client = getAmazonECSClient();
+        AmazonECS client = clientSupplier.get();
 
         try {
             DescribeTaskDefinitionResult result = client.describeTaskDefinition(
-                    new DescribeTaskDefinitionRequest()
-                            .withTaskDefinition(familyOrArn));
+                    new DescribeTaskDefinitionRequest().withTaskDefinition(familyOrArn)
+            );
 
             return result.getTaskDefinition();
         } catch (ClientException e) {
@@ -312,21 +352,27 @@ class ECSService {
         }
     }
 
-    private String fullQualifiedTemplateName(final ECSCloud cloud, final ECSTaskTemplate template) {
-        return cloud.getDisplayName().replaceAll("\\s+", "") + '-' + template.getTemplateName();
+    private String fullQualifiedTemplateName(final String cloudName, final ECSTaskTemplate template) {
+        return cloudName.replaceAll("\\s+", "") + '-' + template.getTemplateName();
     }
 
     RunTaskResult runEcsTask(final ECSSlave agent, final ECSTaskTemplate template, String clusterArn, Collection<String> command, TaskDefinition taskDefinition) throws IOException, AbortException {
-        AmazonECS client = getAmazonECSClient();
+        AmazonECS client = clientSupplier.get();
         agent.setTaskDefinitonArn(taskDefinition.getTaskDefinitionArn());
+
+        SlaveComputer agentComputer = agent.getComputer();
+
+        if (agentComputer == null) {
+            throw new IllegalStateException("Node was deleted, computer is null");
+        }
 
         KeyValuePair envNodeName = new KeyValuePair();
         envNodeName.setName("SLAVE_NODE_NAME");
-        envNodeName.setValue(agent.getComputer().getName());
+        envNodeName.setValue(agentComputer.getName());
 
         KeyValuePair envNodeSecret = new KeyValuePair();
         envNodeSecret.setName("SLAVE_NODE_SECRET");
-        envNodeSecret.setValue(agent.getComputer().getJnlpMac());
+        envNodeSecret.setValue(agentComputer.getJnlpMac());
 
         // by convention, we assume the jenkins agent container is the first container in the task definition. ECS requires
         // all task definitions to contain at least one container, and all containers to have a name, so we do not need
@@ -346,6 +392,10 @@ class ECSService {
                                 .withEnvironment(envNodeSecret)))
                 .withPlacementStrategy(template.getPlacementStrategyEntries())
                 .withCluster(clusterArn);
+
+        if (template.getLaunchType() != null && template.getLaunchType().equals("FARGATE")) {
+            req.withPlatformVersion(template.getPlatformVersion());
+        }
 
         if (taskDefinition.getNetworkMode() != null && taskDefinition.getNetworkMode().equals("awsvpc")) {
             AwsVpcConfiguration awsVpcConfiguration = new AwsVpcConfiguration();
