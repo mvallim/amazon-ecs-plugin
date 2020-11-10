@@ -43,6 +43,12 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.ecs.AmazonECS;
 import com.amazonaws.services.ecs.AmazonECSClientBuilder;
 import com.amazonaws.services.ecs.model.*;
+import com.amazonaws.services.ecs.waiters.AmazonECSWaiters;
+import com.amazonaws.waiters.FixedDelayStrategy;
+import com.amazonaws.waiters.PollingStrategy;
+import com.amazonaws.waiters.Waiter;
+import com.amazonaws.waiters.WaiterParameters;
+import com.cloudbees.jenkins.plugins.amazonecs.aws.MaxTimeRetryStrategy;
 import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsHelper;
 import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 
@@ -57,9 +63,9 @@ import hudson.slaves.SlaveComputer;
 /**
  * Encapsulates interactions with Amazon ECS.
  *
- * @author Jan Roehrich <jan@roehrich.info>
+ * @author Jan Roehrich {@literal <jan@roehrich.info> }
  */
-class ECSService {
+public class ECSService {
     private static final Logger LOGGER = Logger.getLogger(ECSCloud.class.getName());
 
     @Nonnull
@@ -76,6 +82,10 @@ class ECSService {
                 clientConfiguration.setProxyUsername(proxy.getUserName());
                 clientConfiguration.setProxyPassword(proxy.getPassword());
             }
+
+            // Default is 3. 10 helps us actually utilize the SDK's backoff strategy
+            // The strategy will wait up to 20 seconds per request (after multiple failures)
+            clientConfiguration.setMaxErrorRetry(10);
 
             AmazonECSClientBuilder builder = AmazonECSClientBuilder
                     .standard()
@@ -127,6 +137,19 @@ class ECSService {
         } else {
             return result.getTasks().get(0);
         }
+    }
+
+    public void waitForTasksRunning(String tasksArn, String clusterArn, long timeoutInMillis, int DelayBetweenPollsInSeconds) {
+        final AmazonECS client = clientSupplier.get();
+
+        Waiter<DescribeTasksRequest> describeTaskWaiter = new AmazonECSWaiters(client).tasksRunning();
+
+        describeTaskWaiter.run(new WaiterParameters<DescribeTasksRequest>(
+            new DescribeTasksRequest()
+                .withTasks(tasksArn)
+                .withCluster(clusterArn)
+                .withSdkClientExecutionTimeout((int)timeoutInMillis))
+            .withPollingStrategy(new PollingStrategy(new MaxTimeRetryStrategy(timeoutInMillis), new FixedDelayStrategy(DelayBetweenPollsInSeconds))));
     }
 
     public void stopTask(String taskArn, String clusterArn) {
@@ -304,16 +327,16 @@ class ECSService {
     }
 
     /**
-     * Deregisters a task definition created for a template we are deleting. 
+     * Deregisters a task definition created for a template we are deleting.
      * It's expected that taskDefinitionArn is set
      * We don't attempt to de-register anything if TaskDefinitionOverride isn't null
-     * 
+     *
      * @param template       The template used to create the task definition
      * @return The task definition if found, otherwise null
      */
     void removeTemplate(final ECSTaskTemplate template) {
         AmazonECS client = clientSupplier.get();
-        
+
         //no task definition was created for this template to delete
         if (template.getTaskDefinitionOverride() != null) {
             return;

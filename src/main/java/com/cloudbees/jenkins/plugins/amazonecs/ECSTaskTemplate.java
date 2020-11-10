@@ -651,6 +651,7 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
         boolean privileged = this.privileged ? this.privileged : parent.getPrivileged();
         String containerUser = isNullOrEmpty(this.containerUser) ? parent.getContainerUser() : this.containerUser;
         String logDriver = isNullOrEmpty(this.logDriver) ? parent.getLogDriver() : this.logDriver;
+        String entrypoint = isNullOrEmpty(this.entrypoint) ? parent.getEntrypoint() : this.entrypoint;
 
         // TODO probably merge lists with parent instead of overriding them
         List<LogDriverOption> logDriverOptions = isEmpty(this.logDriverOptions) ? parent.getLogDriverOptions() : this.logDriverOptions;
@@ -995,7 +996,13 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
             return options;
         }
 
-        public FormValidation doCheckTemplateName(@QueryParameter String value) throws IOException, ServletException {
+        public FormValidation doCheckTemplateName(
+            @QueryParameter String value,
+            @QueryParameter String taskDefinitionOverride
+        ) throws IOException, ServletException {
+            if (!isNullOrEmpty(taskDefinitionOverride)) {
+                return FormValidation.ok();
+            }
             if (value.length() > 0 && value.length() <= 127 && value.matches(TEMPLATE_NAME_PATTERN)) {
                 return FormValidation.ok();
             }
@@ -1017,11 +1024,25 @@ public class ECSTaskTemplate extends AbstractDescribableImpl<ECSTaskTemplate> im
         }
 
         /* we validate both memory and memoryReservation fields to the same rules */
-        public FormValidation doCheckMemory(@QueryParameter("memory") int memory, @QueryParameter("memoryReservation") int memoryReservation) throws IOException, ServletException {
+        public FormValidation doCheckMemory(
+            @QueryParameter("memory") int memory,
+            @QueryParameter("memoryReservation") int memoryReservation,
+            @QueryParameter String taskDefinitionOverride
+        ) throws IOException, ServletException {
+            if (!isNullOrEmpty(taskDefinitionOverride)) {
+                return FormValidation.ok();
+            }
             return validateMemorySettings(memory,memoryReservation);
         }
 
-        public FormValidation doCheckMemoryReservation(@QueryParameter("memory") int memory, @QueryParameter("memoryReservation") int memoryReservation) throws IOException, ServletException {
+        public FormValidation doCheckMemoryReservation(
+            @QueryParameter("memory") int memory,
+            @QueryParameter("memoryReservation") int memoryReservation,
+            @QueryParameter String taskDefinitionOverride
+        ) throws IOException, ServletException {
+            if (!isNullOrEmpty(taskDefinitionOverride)) {
+                return FormValidation.ok();
+            }
             return validateMemorySettings(memory,memoryReservation);
         }
 

@@ -3,6 +3,10 @@
 [![Build Status](https://ci.jenkins.io/job/Plugins/job/amazon-ecs-plugin/job/master/badge/icon)](https://ci.jenkins.io/job/Plugins/job/amazon-ecs-plugin/job/master/)
 [![Join the chat at https://gitter.im/jenkinsci/amazon-ecs-plugin](https://badges.gitter.im/jenkinsci/amazon-ecs-plugin.svg)](https://gitter.im/jenkinsci/amazon-ecs-plugin?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+## Project Status
+This project is looking for maintainers, see also https://github.com/jenkinsci/amazon-ecs-plugin/issues/200
+If you want to adopt this plugin see https://www.jenkins.io/doc/developer/plugin-governance/adopt-a-plugin/
+
 ## About
 
 This Jenkins plugin uses [Amazon Elastic Container Service](http://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html) to host jobs execution inside docker containers.
@@ -32,6 +36,7 @@ Use the Jenkins plugin manager to install the [Amazon Elastic Container Service 
 There are currently the following example setups (also in this repo):
 
 -   [Fargate](examples/fargate) - ephemeral master and agents on Fargate
+-   [Fargate with CDK (by AWS)](https://github.com/aws-samples/jenkins-on-aws) - Jenkins Setup designed by AWS
 
 #### Amazon ECS cluster
 
@@ -266,7 +271,8 @@ pipeline{
           sh 'echo hello'
         }
     }
-
+}
+```
 ## FAQ
 
 ### My parallel jobs don't start at the same time
@@ -291,6 +297,7 @@ If you are running a interesting setup or have public posts abour your setups us
 
 -   Slides: [Run Jenkins as managed product on ECS](https://www.slideshare.net/PhilippGarbe1/run-jenkins-as-managed-product-on-ecs-aws-meetup)
 -   [Youtube: Jenkins with Amazon ECS slaves](https://www.youtube.com/watch?v=v0b53cdrujs)
+- [AWS Blog - Jenkins on AWS](https://aws.amazon.com/blogs/opensource/why-jenkins-still-continuously-serves-developers/)
 
 ## Maintainers
 
