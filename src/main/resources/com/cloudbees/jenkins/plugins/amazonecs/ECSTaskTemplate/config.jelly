@@ -25,12 +25,15 @@
   -->
 
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
-  <f:entry title="Label" field="label" description="The label used to identify this agent in Jenkins.">
+  <f:entry title="Label" field="label" description="Labels used to identify this agent in Jenkins, which must be separated by a space. For example, `java11 alpine` would assign two labels to the agent: `java11` and `alpine`.">
     <f:textbox />
   </f:entry>
   <f:entry title="${%Template Name}" field="templateName" description="The name that will be appended to the ECS cluster name when creating task definitions. Cannot be used with a Task Definition Override.">
       <f:textbox />
     </f:entry>
+  <f:entry title="${%Agent Container Name}" field="agentContainerName" description="Name of the Jenkins agent container. This is value is only used when Task Definition Override is defined.">
+      <f:textbox />
+  </f:entry>
   <f:entry title="${%Task Definition Override}" field="taskDefinitionOverride" description="Externally-managed ECS task definition to use, instead of creating task definitions using the Template Name. This value takes precedence over all other container settings.">
       <f:textbox />
   </f:entry>
@@ -42,6 +45,36 @@
   </f:entry>
   <f:entry name="launchType" title="${%Launch type}" field="launchType">
     <f:select />
+  </f:entry>
+  <f:entry name="operatingSystemFamily" title="${%Operating System Family}" field="operatingSystemFamily">
+    <f:select />
+  </f:entry>
+  <f:entry name="cpuArchitecture" title="${%CPU Architecture}" field="cpuArchitecture">
+    <f:select />
+  </f:entry>
+  <f:entry title="${%Default Capacity Provider}" field="defaultCapacityProvider" description="Use Default Capacity Provider. This will ignore Capacity provider strategy and use launch type value to set require capabilities">
+    <f:checkbox />
+  </f:entry>
+  <f:entry field="capacityProviderStrategies" title="${%Capacity provider strategy}">
+    <f:repeatable field="capacityProviderStrategies">
+      <table width="100%">
+        <f:entry field="base" title="${%Base}">
+          <f:textbox default="0"/>
+        </f:entry>
+        <f:entry field="weight" title="${%Weight}">
+          <f:textbox default="0"/>
+        </f:entry>
+        <f:entry name="provider" title="${%Provider}" field="provider">
+          <f:select />
+        </f:entry>
+
+        <f:entry>
+          <div align="right">
+            <f:repeatableDeleteButton />
+          </div>
+        </f:entry>
+      </table>
+    </f:repeatable>
   </f:entry>
   <f:entry name="networkMode" title="${%Network mode}" field="networkMode">
     <f:select />
@@ -60,6 +93,9 @@
   </f:entry>
   <f:entry title="${%CPU units}" field="cpu">
     <f:textbox default="1"/>
+  </f:entry>
+  <f:entry title="${%Ephemeral Storage (GiB)}" field="ephemeralStorageSizeInGiB">
+    <f:textbox />
   </f:entry>
   <f:entry title="${%Subnets}" field="subnets" description="List of subnets, separated by comma, only needed when using fargate or awsvpc network mode">
     <f:textbox />
@@ -95,7 +131,13 @@
     <f:entry title="${%Unique filesystem root}" field="uniqueRemoteFSRoot">
       <f:checkbox />
     </f:entry>
+    <f:entry title="${%Enable Command Execution}" field="enableExecuteCommand">
+      <f:checkbox />
+    </f:entry>
     <f:entry title="${%ContainerUser}" field="containerUser">
+      <f:textbox />
+    </f:entry>
+    <f:entry title="${%Add Kernel Capabilities}" field="kernelCapabilities" description="List of kernel capabilities to be added, separated by comma">
       <f:textbox />
     </f:entry>
     <f:entry title="${%Logging Driver}" field="logDriver">
@@ -175,6 +217,41 @@
         </table>
       </f:repeatable>
     </f:entry>
+    <f:entry title="${%EFS Container Mount Points}">
+      <f:repeatable field="efsMountPoints">
+        <table width="100%">
+          <f:entry title="${%Name}" field="name">
+            <f:textbox value="${instance.name}" />
+          </f:entry>
+          <f:entry title="${%Container Path}" field="containerPath">
+            <f:textbox value="${instance.containerPath}" />
+          </f:entry>
+          <f:entry title="${%Read Only}" field="readOnly">
+            <f:checkbox />
+          </f:entry>
+          <f:entry name="fileSystemId" title="${%File System ID}" field="fileSystemId">
+            <f:select />
+          </f:entry>
+          <f:entry name="accessPointId"  title="${%Access Point ID}" field="accessPointId">
+            <f:select />
+          </f:entry>
+          <f:entry title="${%Root Directory}" field="rootDirectory">
+            <f:textbox value="${instance.rootDirectory}" />
+          </f:entry>
+          <f:entry title="${%Transit Encryption}" field="transitEncryption">
+            <f:checkbox />
+          </f:entry>
+          <f:entry title="${%EFS IAM Authorization}" field="iam">
+            <f:checkbox />
+          </f:entry>
+          <f:entry title="">
+            <div align="right">
+              <f:repeatableDeleteButton />
+            </div>
+          </f:entry>
+        </table>
+      </f:repeatable>
+    </f:entry>
     <f:entry field="portMappings" title="${%Port Mappings}">
       <f:repeatable field="portMappings">
         <table width="100%">
@@ -195,6 +272,26 @@
         </table>
       </f:repeatable>
     </f:entry>
+    <f:entry field="ulimits" title="${%Ulimits}">
+      <f:repeatable field="ulimits">
+        <table width="100%">
+          <f:entry field="softLimit" title="${%Soft limit}">
+            <f:textbox />
+          </f:entry>
+          <f:entry field="hardLimit" title="${%Hard limit}">
+            <f:textbox />
+          </f:entry>
+          <f:entry field="ulimitName" title="${%Ulimit name}">
+            <f:select />
+          </f:entry>
+          <f:entry>
+            <div align="right">
+              <f:repeatableDeleteButton />
+            </div>
+          </f:entry>
+        </table>
+      </f:repeatable>
+    </f:entry>
     <f:entry field="placementStrategies" title="${%Placement Strategies}">
       <f:repeatable field="placementStrategies">
         <table width="100%">
@@ -205,6 +302,23 @@
             <f:select />
           </f:entry>
 
+          <f:entry>
+            <div align="right">
+              <f:repeatableDeleteButton />
+            </div>
+          </f:entry>
+        </table>
+      </f:repeatable>
+    </f:entry>
+    <f:entry title="${%Tags}">
+      <f:repeatable field="tags">
+        <table width="100%">
+          <f:entry field="name" title="${%Name}">
+            <f:textbox/>
+          </f:entry>
+          <f:entry field="value" title="${%Value}">
+            <f:textbox/>
+          </f:entry>
           <f:entry>
             <div align="right">
               <f:repeatableDeleteButton />

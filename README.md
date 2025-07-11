@@ -3,10 +3,6 @@
 [![Build Status](https://ci.jenkins.io/job/Plugins/job/amazon-ecs-plugin/job/master/badge/icon)](https://ci.jenkins.io/job/Plugins/job/amazon-ecs-plugin/job/master/)
 [![Join the chat at https://gitter.im/jenkinsci/amazon-ecs-plugin](https://badges.gitter.im/jenkinsci/amazon-ecs-plugin.svg)](https://gitter.im/jenkinsci/amazon-ecs-plugin?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-## Project Status
-This project is looking for maintainers, see also https://github.com/jenkinsci/amazon-ecs-plugin/issues/200
-If you want to adopt this plugin see https://www.jenkins.io/doc/developer/plugin-governance/adopt-a-plugin/
-
 ## About
 
 This Jenkins plugin uses [Amazon Elastic Container Service](http://docs.aws.amazon.com/AmazonECS/latest/developerguide/Welcome.html) to host jobs execution inside docker containers.
@@ -22,8 +18,9 @@ The scope of the plugin is only using existing and pre-configured AWS Infrastruc
 
 ### Requirements
 
--   Jenkins with at least version 2.176.1
+-   Jenkins with at least version 2.289.1
 -   AWS Account
+
 
 ### Plugin install
 
@@ -33,10 +30,12 @@ Use the Jenkins plugin manager to install the [Amazon Elastic Container Service 
 
 #### Examples
 
-There are currently the following example setups (also in this repo):
+There are currently the following example setups in this repo:
 
 -   [Fargate](examples/fargate) - ephemeral master and agents on Fargate
 -   [Fargate with CDK (by AWS)](https://github.com/aws-samples/jenkins-on-aws) - Jenkins Setup designed by AWS
+
+Additionally there is an example setup here: [Terraform Jenkins AWS ECS Fargate](https://github.com/haidaraM/terraform-jenkins-aws-fargate)
 
 #### Amazon ECS cluster
 
@@ -65,23 +64,22 @@ Then enter the configuration details of the Amazon EC2 Container Service Cloud:
 
 _Advanced configuration_
 
-`Tunnel connection through`: tunnelling options (when Jenkins runs behind a load balancer).
-Alternative Jenkins URL: The URL used as the Jenkins URL within the ECS containers of the configured cloud. Can be used to override the default Jenkins URL from global configuration if needed.
+-   `Tunnel connection through`: tunnelling options (when Jenkins runs behind a load balancer).
+-   `Alternative Jenkins URL`: The URL used as the Jenkins URL within the ECS containers of the configured cloud. Can be used to override the default Jenkins URL from global configuration if needed.
 
 ##### ECS Agent Templates
 
-One or several ECS agent templates can be defined for the Amazon EC2 Container Service Cloud. The main reason to create more than one ECS agent template is to use several Docker image to perform build (e.g. java-build-tools, php-build-tools...)
+One or several ECS agent templates can be defined for the Amazon EC2 Container Service Cloud. The main reason to create more than one ECS agent template is to use several Docker images to perform build (e.g. java-build-tools, php-build-tools...)
 
 -   `Template name` is used (prefixed with the cloud's name) for the task definition in ECS.
--   `Label`: agent labels used in conjunction with the job level configuration "Restrict where the project can be run / Label expression". ECS agent label could identify the Docker image used for the agent (e.g. `docker` for the jenkinsci/inbound-agent).
--   `Docker image`: identifier of the Docker image to use to create the agents
-    `Filesystem root`: working directory used by Jenkins (e.g. `/home/jenkins/`).
-    `Memory`: number of MiB of memory reserved for the container. If your container attempts to exceed the memory allocated here, the container is killed.
--   The number of `cpu units` to reserve for the container. A container instance has 1,024 cpu units for every CPU core.
-    Advanced Configuration
+-   `Label`: agent labels used in conjunction with the job level configuration "Restrict where the project can be run / Label expression". ECS agent label could identify the Docker image used for the agent (e.g. `docker` for the jenkinsci/inbound-agent).  Multiple, space delimited labels can be specified(e.g. `java11 alpine`). Label expressions within a job such as `java11 && alpine` or `java11 || alpine` are not currently supported.
+-   `Filesystem root`: working directory used by Jenkins (e.g. `/home/jenkins/`).
+-   `Memory`: number of MiB of memory reserved for the container. If your container attempts to exceed the memory allocated here, the container is killed.  
+-   `CPU units`: number of `cpu units` to reserve for the container. A container instance has 1,024 cpu units for every CPU core.
 
-*   `Override entrypoint`: overwritten Docker image entrypoint. Container command can't be overriden as it is used to pass jenkins agent connection parameters.
-*   `JVM arguments`: additional arguments for the JVM, such as `-XX:MaxPermSize` or GC options.
+_Advanced Configuration_
+-   `Override entrypoint`: overwritten Docker image entrypoint. Container command can't be overriden as it is used to pass jenkins agent connection parameters.
+-   `JVM arguments`: additional arguments for the JVM, such as `-XX:MaxPermSize` or GC options.
 
 #### Network and firewalls
 
@@ -90,14 +88,14 @@ Running the Jenkins master and the ECS container instances in the same Amazon VP
 _Firewalls_
 If you enable network restrictions between the Jenkins master and the ECS cluster container instances,
 
-Fix the TCP listen port for JNLP agents of the Jenkins master (e.g. `5000`) navigating in the "Manage Jenkins / Configure Global Security" screen
-Allow TCP traffic from the ECS cluster container instances to the Jenkins master on the listen port for JNLP agents (see above) and the HTTP(S) port.
+* Fix the TCP listen port for JNLP agents of the Jenkins master (e.g. `5000`) navigating in the "Manage Jenkins / Configure Global Security" screen
+* Allow TCP traffic from the ECS cluster container instances to the Jenkins master on the listen port for JNLP agents (see above) and the HTTP(S) port.
 
 _Network Address Translation and Reverse Proxies_
 In case of Network Address Translation rules between the ECS cluster container instances and the Jenkins master, ensure that the JNLP agents will use the proper hostname to connect to the Jenkins master doing on of the following:
 
-Define the proper hostname of the Jenkins master defining the system property `hudson.TcpSlaveAgentListener.hostName` in the launch command
-Use the advanced configuration option "Tunnel connection through" in the configuration of the Jenkins Amazon EC2 Container Service Cloud (see above).
+* Define the proper hostname of the Jenkins master defining the system property `hudson.TcpSlaveAgentListener.hostName` in the launch command
+* Use the advanced configuration option "Tunnel connection through" in the configuration of the Jenkins Amazon EC2 Container Service Cloud (see above).
 
 ### IAM Permissions
 
@@ -131,10 +129,12 @@ TaskRole:
                             - "ecs:ListTaskDefinitions"
                             - "ecs:DescribeTaskDefinition"
                             - "ecs:DeregisterTaskDefinition"
+                            - "ecs:ListTagsForResource"
                         Effect: Allow
                         Resource: "*"
                       - Action:
                             - "ecs:ListContainerInstances"
+                            - "ecs:DescribeClusters"
                         Effect: Allow
                         Resource:
                             - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/<clusterName>"
@@ -162,6 +162,11 @@ TaskRole:
                                 ecs:cluster:
                                     - !Sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:cluster/<clusterName>"
                         Resource: !Sub "arn:aws:ecs:*:*:task/*" # "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/*"
+                      - Action:
+                            - "elasticfilesystem:DescribeAccessPoints"
+                            - "elasticfilesystem:DescribeFileSystems"
+                        Effect: Allow
+                        Resource: !Sub "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/*"
 ```
 
 ### Agent
@@ -248,6 +253,7 @@ ecsTaskTemplate(
     containerUser: 'ubuntu',
     remoteFSRoot: '/home/ubuntu',
     overrides: [],
+    agentContainerName: 'java',    
     taskDefinitionOverride: "arn:aws:redacted:redacted:task-definition/${env.task}"
 ) {
   node(dynamic_label) {
@@ -303,7 +309,8 @@ If you are running a interesting setup or have public posts abour your setups us
 
 Andreas Sieferlinger ([GitHub](https://github.com/webratz) [Twitter](https://twitter.com/webratz))  
 Philipp Garbe ([GitHub](https://github.com/pgarbe), [Twitter](https://twitter.com/pgarbe))  
-Marky Jackson ([GitHub](https://github.com/markyjackson-taulia), [Twitter](https://twitter.com/MarkyJackson3))
+Marky Jackson ([GitHub](https://github.com/markyjackson-taulia), [Twitter](https://twitter.com/MarkyJackson3))  
+Stephen Erickson ([GitHub](https://github.com/stericson))
 
 ## Developing
 
@@ -323,7 +330,14 @@ To run locally, execute the following command and open the browser [http://local
   mvn -e hpi:run
 ```
 
-### Debugging The plugin in an editor:
+### Debugging the plugin in an editor
+
+#### IntelliJ IDEA
+
+In the Maven dialog right click `hpi:run` and select `Debug`. 
+The IDE will stop at any breakpoints you have set inside the plugin.
+
+#### Other
 
 the
 

@@ -11,12 +11,13 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.JenkinsRule;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.UUID;
@@ -67,10 +68,15 @@ public class ECSTaskTemplateStepExecutionTest {
                 "template-name",
                 "child-label",
                 UUID.randomUUID().toString(),
+                UUID.randomUUID().toString(),
                 null,
                 "image-override",
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(),
+                "LINUX",
+                "X86_64",
+                false,
+                null,
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(),
                 false,
@@ -78,11 +84,16 @@ public class ECSTaskTemplateStepExecutionTest {
                 r.nextInt(123),
                 r.nextInt(456),
                 r.nextInt(1024),
+                r.nextInt(200),
                 UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(),
                 r.nextBoolean(),
                 r.nextBoolean(),
                 UUID.randomUUID().toString(),
+                null,
+                null,
+                new ArrayList<>(),
+                null,
                 null,
                 null,
                 null,
@@ -92,7 +103,8 @@ public class ECSTaskTemplateStepExecutionTest {
                 null,
                 "override-task-role",
                 null,
-                r.nextInt(123));
+                r.nextInt(123),
+                false);
 
         // Overriding the entrypoint is inconsistent... why? You can't do it in the step
 //        expected.setEntrypoint("entrypoint-override");
@@ -102,6 +114,9 @@ public class ECSTaskTemplateStepExecutionTest {
 
         step.setImage(expected.getImage());
         step.setLaunchType(expected.getLaunchType());
+        step.setOperatingSystemFamily(expected.getOperatingSystemFamily());
+        step.setCpuArchitecture(expected.getCpuArchitecture());
+        step.setAgentContainerName(expected.getAgentContainerName());
         step.setTaskDefinitionOverride(expected.getTaskDefinitionOverride());
         step.setRepositoryCredentials(expected.getRepositoryCredentials());
         step.setNetworkMode(expected.getNetworkMode());
@@ -111,16 +126,20 @@ public class ECSTaskTemplateStepExecutionTest {
         step.setMemory(expected.getMemory());
         step.setMemoryReservation(expected.getMemoryReservation());
         step.setCpu(expected.getCpu());
+        step.setEphemeralStorageSizeInGiB(expected.getEphemeralStorageSizeInGiB());
         step.setSubnets(expected.getSubnets());
         step.setSecurityGroups(expected.getSecurityGroups());
         step.setAssignPublicIp(expected.getAssignPublicIp());
         step.setPrivileged(expected.getPrivileged());
         step.setContainerUser(expected.getContainerUser());
+        step.setKernelCapabilities(expected.getKernelCapabilities());
         step.setLogDriverOptions(expected.getLogDriverOptions());
         step.setEnvironments(expected.getEnvironments());
         step.setExtraHosts(expected.getExtraHosts());
         step.setMountPoints(expected.getMountPoints());
+        step.setEfsMountPoints(expected.getEfsMountPoints());
         step.setPortMappings(expected.getPortMappings());
+        step.setUlimits(expected.getUlimits());
         step.setExecutionRole(expected.getExecutionRole());
         step.setPlacementStrategies(expected.getPlacementStrategies());
         step.setTaskrole(expected.getTaskrole());
@@ -142,10 +161,15 @@ public class ECSTaskTemplateStepExecutionTest {
                 templateName,
                 label,
                 "",
+                "",
                 null,
                 "image",
                 "repositoryCredentials",
                 "launchType",
+                "operatingSystemFamily",
+                "cpuArchitecture",
+                false,
+                null,
                 "networkMode",
                 "remoteFSRoot",
                 false,
@@ -155,11 +179,13 @@ public class ECSTaskTemplateStepExecutionTest {
                 0,
                 null,
                 null,
+                null,
                 false,
                 false,
                 null,
                 null,
                 null,
+                new ArrayList<>(),
                 null,
                 null,
                 null,
@@ -167,6 +193,10 @@ public class ECSTaskTemplateStepExecutionTest {
                 null,
                 null,
                 null,
-                0);
+                null,
+                null,
+                null,
+                0,
+                false);
     }
 }

@@ -1,5 +1,7 @@
 package com.cloudbees.jenkins.plugins.amazonecs.pipeline;
 
+
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate;
 import com.cloudbees.jenkins.plugins.amazonecs.SerializableSupplier;
 import hudson.Extension;
 import hudson.model.TaskListener;
@@ -24,32 +26,39 @@ import java.util.Set;
 
 import com.amazonaws.services.ecs.model.LaunchType;
 import com.amazonaws.services.ecs.model.NetworkMode;
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.EFSMountPointEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.EnvironmentEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.ExtraHostEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.LogDriverOption;
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.Tag;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.MountPointEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.PortMappingEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.PlacementStrategyEntry;
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.CapacityProviderStrategyEntry;
 import com.google.common.collect.ImmutableSet;
 import hudson.model.Run;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
 
 public class ECSTaskTemplateStep extends Step implements Serializable {
     private static final long serialVersionUID = 1L;
     private static final Logger LOGGER = Logger.getLogger(ECSTaskTemplateStep.class.getName());
 
-    private final String DEFAULT_CLOUD = "cloud-default";
+    private static final String DEFAULT_CLOUD = "cloud-default";
     private final String label;
     private final String name;
     private String cloud = DEFAULT_CLOUD;
+    private String agentContainerName;
     private String taskDefinitionOverride;
     private String repositoryCredentials;
     private String image;
     private String launchType;
+    private String operatingSystemFamily;
+    private String cpuArchitecture;
+    private boolean defaultCapacityProvider;
     private String networkMode;
     private String remoteFSRoot;
     private boolean uniqueRemoteFSRoot;
@@ -57,22 +66,29 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
     private int memory;
     private int memoryReservation;
     private int cpu;
+    private Integer ephemeralStorageSizeInGiB;
     private int sharedMemorySize;
     private String subnets;
     private String securityGroups;
     private boolean assignPublicIp;
     private boolean privileged;
     private String containerUser;
+    private String kernelCapabilities;
     private String executionRole;
     private String taskrole;
     private String inheritFrom;
+    private boolean enableExecuteCommand;
     private String logDriver;
     private List<LogDriverOption> logDriverOptions;
+    private List<Tag> tags;
     private List<EnvironmentEntry> environments;
     private List<ExtraHostEntry> extraHosts;
     private List<MountPointEntry> mountPoints;
+    private List<EFSMountPointEntry> efsMountPoints;
     private List<PortMappingEntry> portMappings;
+    private List<ECSTaskTemplate.UlimitEntry> ulimits;
     private List<PlacementStrategyEntry> placementStrategies;
+    private List<CapacityProviderStrategyEntry> capacityProviderStrategies;
 
     private List<String> overrides;
 
@@ -98,6 +114,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
 
     public String getCloud() {
         return cloud;
+    }
+
+    @DataBoundSetter
+    public void setAgentContainerName(String agentContainerName) {
+        this.agentContainerName = agentContainerName;
+    }
+
+    public String getAgentContainerName() {
+        return agentContainerName;
     }
 
     @DataBoundSetter
@@ -134,6 +159,25 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
 
     public String getLaunchType() {
         return launchType;
+    }
+
+
+    @DataBoundSetter
+    public void setOperatingSystemFamily(String operatingSystemFamily) {
+        this.operatingSystemFamily = operatingSystemFamily;
+    }
+
+    public String getOperatingSystemFamily() {
+        return operatingSystemFamily;
+    }
+
+    @DataBoundSetter
+    public void setCpuArchitecture(String cpuArchitecture) {
+        this.cpuArchitecture = cpuArchitecture;
+    }
+
+    public String getCpuArchitecture() {
+        return cpuArchitecture;
     }
 
     @DataBoundSetter
@@ -200,6 +244,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
     }
 
     @DataBoundSetter
+    public void setEphemeralStorageSizeInGiB(Integer ephemeralStorageSizeInGiB) {
+        this.ephemeralStorageSizeInGiB = ephemeralStorageSizeInGiB;
+    }
+
+    public Integer getEphemeralStorageSizeInGiB() {
+        return ephemeralStorageSizeInGiB;
+    }
+
+    @DataBoundSetter
     public void setSharedMemorySize(int sharedMemorySize) {
         this.sharedMemorySize = sharedMemorySize;
     }
@@ -236,6 +289,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
     }
 
     @DataBoundSetter
+    public void setDefaultCapacityProvider(boolean defaultCapacityProvider) {
+        this.defaultCapacityProvider = defaultCapacityProvider;
+    }
+
+    public boolean getDefaultCapacityProvider() {
+        return defaultCapacityProvider;
+    }
+
+    @DataBoundSetter
     public void setPrivileged(boolean privileged) {
         this.privileged = privileged;
     }
@@ -251,6 +313,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
 
     public String getContainerUser() {
         return containerUser;
+    }
+
+    @DataBoundSetter
+    public void setKernelCapabilities(String kernelCapabilities) {
+        this.kernelCapabilities = kernelCapabilities;
+    }
+
+    public String getKernelCapabilities() {
+        return kernelCapabilities;
     }
 
     @DataBoundSetter
@@ -280,6 +351,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
         return inheritFrom;
     }
 
+    @DataBoundSetter
+    public void setEnableExecuteCommand(boolean enableExecuteCommand) {
+        this.enableExecuteCommand = enableExecuteCommand;
+    }
+
+    public boolean getEnableExecuteCommand() {
+        return enableExecuteCommand;
+    }
+
     public String getLogDriver() {
         return logDriver;
     }
@@ -296,6 +376,15 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
     @DataBoundSetter
     public void setLogDriverOptions(List<LogDriverOption> logDriverOptions) {
         this.logDriverOptions = logDriverOptions;
+    }
+
+    public List<Tag> getTags() {
+        return tags;
+    }
+
+    @DataBoundSetter
+    public void setTags(List<Tag> tags) {
+        this.tags = tags;
     }
 
     public List<EnvironmentEntry> getEnvironments() {
@@ -325,13 +414,30 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
         this.mountPoints = mountPoints;
     }
 
+    public List<EFSMountPointEntry> getEfsMountPoints() {
+        return efsMountPoints;
+    }
+
+    @DataBoundSetter
+    public void setEfsMountPoints(List<EFSMountPointEntry> efsMountPoints) {
+        this.efsMountPoints = efsMountPoints;
+    }
+
     public List<PortMappingEntry> getPortMappings() {
         return portMappings;
+    }
+    public List<ECSTaskTemplate.UlimitEntry> getUlimits() {
+        return ulimits;
     }
 
     @DataBoundSetter
     public void setPortMappings(List<PortMappingEntry> portMappings) {
         this.portMappings = portMappings;
+    }
+
+    @DataBoundSetter
+    public void setUlimits(List<ECSTaskTemplate.UlimitEntry> ulimits) {
+        this.ulimits = ulimits;
     }
 
     public List<PlacementStrategyEntry> getPlacementStrategies() {
@@ -342,6 +448,16 @@ public class ECSTaskTemplateStep extends Step implements Serializable {
     public void setPlacementStrategies(List<PlacementStrategyEntry> placementStrategies) {
         this.placementStrategies = placementStrategies;
     }
+
+    public List<CapacityProviderStrategyEntry> getCapacityProviderStrategies() {
+        return capacityProviderStrategies;
+    }
+
+    @DataBoundSetter
+    public void setCapacityProviderStrategies(List<CapacityProviderStrategyEntry> capacityProviderStrategies) {
+        this.capacityProviderStrategies = capacityProviderStrategies;
+    }
+    
 
     @DataBoundSetter
     public void setOverrides(List<String> overrides) {

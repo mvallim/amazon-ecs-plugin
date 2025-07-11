@@ -1,21 +1,27 @@
 package com.cloudbees.jenkins.plugins.amazonecs.pipeline;
 
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate;
 import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.plugins.pipeline.modeldefinition.agent.DeclarativeAgent;
 import org.jenkinsci.plugins.pipeline.modeldefinition.agent.DeclarativeAgentDescriptor;
+import org.jenkinsci.plugins.pipeline.modeldefinition.parser.CompatibilityLoader;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.jenkinsci.plugins.variant.OptionalExtension;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.EFSMountPointEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.EnvironmentEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.ExtraHostEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.LogDriverOption;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.MountPointEntry;
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.PlacementStrategyEntry;
 import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.PortMappingEntry;
+import com.cloudbees.jenkins.plugins.amazonecs.ECSTaskTemplate.Tag;
 
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +33,7 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
 
     private String label;
     private String cloud;
+    private String agentContainerName;
     private String taskDefinitionOverride;
     private String image;
     private String launchType;
@@ -36,21 +43,27 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
     private int memory;
     private int memoryReservation;
     private int cpu;
+    private Integer ephemeralStorageSizeInGiB;
     private int sharedMemorySize;
     private String subnets;
     private String securityGroups;
     private boolean assignPublicIp;
     private boolean privileged;
     private String containerUser;
+    private String kernelCapabilities;
     private String executionRole;
     private String taskrole;
     private String inheritFrom;
     private String logDriver;
+    private List<Tag> tags;
     private List<LogDriverOption> logDriverOptions;
     private List<EnvironmentEntry> environments;
     private List<ExtraHostEntry> extraHosts;
     private List<MountPointEntry> mountPoints;
+    private List<EFSMountPointEntry> efsMountPoints;
     private List<PortMappingEntry> portMappings;
+    private List<ECSTaskTemplate.UlimitEntry> ulimits;
+    private List<PlacementStrategyEntry> placementStrategies;
 
     private ArrayList<String> overrides = new ArrayList<String>();
 
@@ -76,6 +89,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
     public void setCloud(String cloud) {
         this.cloud = cloud;
         overrides.add("cloud");
+    }
+
+    public String getAgentContainerName() {
+        return agentContainerName;
+    }
+
+    @DataBoundSetter
+    public void setAgentContainerName(String agentContainerName) {
+        this.agentContainerName = agentContainerName;
+        overrides.add("agentContainerName");
     }
 
     public String getTaskDefinitionOverride() {
@@ -168,6 +191,14 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         overrides.add("cpu");
     }
 
+    public Integer getEphemeralStorageSizeInGiB() { return ephemeralStorageSizeInGiB; }
+
+    @DataBoundSetter
+    public void setEphemeralStorageSizeInGiB(Integer ephemeralStorageSizeInGiB) {
+        this.ephemeralStorageSizeInGiB = ephemeralStorageSizeInGiB;
+        overrides.add("ephemeralStorageSizeInGiB");
+    }
+
     public int getSharedMemorySize() {
         return sharedMemorySize;
     }
@@ -228,6 +259,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         overrides.add("containerUser");
     }
 
+    public String getKernelCapabilities() {
+        return kernelCapabilities;
+    }
+
+    @DataBoundSetter
+    public void setKernelCapabilities(String kernelCapabilities) {
+        this.kernelCapabilities = kernelCapabilities;
+        overrides.add("kernelCapabilities");
+    }
+
     public String getExecutionRole() {
         return executionRole;
     }
@@ -278,6 +319,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         overrides.add("logDriverOptions");
     }
 
+    public List<Tag> getTags() {
+        return tags;
+    }
+
+    @DataBoundSetter
+    public void setTags(List<Tag> tags) {
+        this.tags = tags;
+        overrides.add("tags");
+    }
+
     public List<EnvironmentEntry> getEnvironments() {
         return environments;
     }
@@ -308,14 +359,47 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         overrides.add("mountPoints");
     }
 
+    public List<EFSMountPointEntry> getEfsMountPoints() {
+        return efsMountPoints;
+    }
+
+    @DataBoundSetter
+    public void setEfsMountPoints(List<EFSMountPointEntry> efsMountPoints) {
+        this.efsMountPoints = efsMountPoints;
+        overrides.add("efsMountPoints");
+    }
+
     public List<PortMappingEntry> getPortMappings() {
         return portMappings;
     }
+
 
     @DataBoundSetter
     public void setPortMappings(List<PortMappingEntry> portMappings) {
         this.portMappings = portMappings;
         overrides.add("portMappings");
+    }
+
+    public List<ECSTaskTemplate.UlimitEntry> getUlimits() {
+        return ulimits;
+    }
+
+
+    @DataBoundSetter
+    public void setUlimits(List<ECSTaskTemplate.UlimitEntry> ulimits) {
+        this.ulimits = ulimits;
+        overrides.add("ulimits");
+    }
+
+
+    public List<PlacementStrategyEntry> getPlacementStrategies() {
+        return placementStrategies;
+    }
+
+    @DataBoundSetter
+    public void setPlacementStrategies(List<PlacementStrategyEntry> placementStrategies) {
+        this.placementStrategies = placementStrategies;
+        overrides.add("placementStrategies");
     }
 
     public Map<String,Object> getAsArgs() {
@@ -363,6 +447,10 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
             argMap.put("cpu", cpu);
         }
 
+        if (ephemeralStorageSizeInGiB != null && ephemeralStorageSizeInGiB != 0 ) {
+            argMap.put("ephemeralStorageSizeInGiB", ephemeralStorageSizeInGiB);
+        }
+
         if (sharedMemorySize != 0) {
             argMap.put("sharedMemorySize", sharedMemorySize);
         }
@@ -380,6 +468,10 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
 
         if (!StringUtils.isEmpty(containerUser)) {
             argMap.put("containerUser", containerUser);
+        }
+
+        if (!StringUtils.isEmpty(kernelCapabilities)) {
+            argMap.put("kernelCapabilities", kernelCapabilities);
         }
 
         if (!StringUtils.isEmpty(executionRole)) {
@@ -402,6 +494,10 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
             argMap.put("logDriverOptions", logDriverOptions);
         }
 
+        if (tags != null && tags.size() > 0) {
+            argMap.put("tags", tags);
+        }
+
         if (environments != null && environments.size() > 0) {
             argMap.put("environments", environments);
         }
@@ -414,8 +510,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
             argMap.put("mountPoints", mountPoints);
         }
 
+        if (efsMountPoints != null && efsMountPoints.size() > 0) {
+            argMap.put("efsMountPoints", efsMountPoints);
+        }
+
         if (portMappings != null && portMappings.size() > 0) {
             argMap.put("portMappings", portMappings);
+        }
+
+        if (placementStrategies != null && placementStrategies.size() > 0){
+            argMap.put("placementStrategies", placementStrategies);
         }
 
         argMap.put("overrides", overrides);
@@ -431,6 +535,16 @@ public class ECSDeclarativeAgent extends DeclarativeAgent<ECSDeclarativeAgent> {
         @Override
         public String getDisplayName() {
             return "ECS Agent";
+        }
+    }
+
+    @OptionalExtension(requirePlugins = "pipeline-model-extensions")
+    public static final class Compat implements CompatibilityLoader {
+        @Override
+        public URL loadGroovySource(String clazz) {
+            return "com.cloudbees.jenkins.plugins.amazonecs.pipeline.ECSDeclarativeAgentScript".equals(clazz)
+                    ? ECSDeclarativeAgent.class.getResource("ECSDeclarativeAgentScript-old.groovy")
+                    : null;
         }
     }
 }

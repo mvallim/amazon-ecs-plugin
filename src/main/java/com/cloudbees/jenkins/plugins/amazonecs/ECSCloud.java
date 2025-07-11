@@ -39,7 +39,7 @@ import java.util.logging.Logger;
 
 import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.regions.Region;
@@ -81,6 +81,7 @@ public class ECSCloud extends Cloud {
     private final String credentialsId;
     private final String cluster;
     private String regionName;
+    private String assumedRoleArn;
     @CheckForNull
     private String tunnel;
     private String jenkinsUrl;
@@ -93,11 +94,14 @@ public class ECSCloud extends Cloud {
     private int maxCpu;
     private int maxMemory;
     private int maxMemoryReservation;
+    private int maxAgents = DescriptorImpl.DEFAULT_MAXIMUM_AGENTS;
+    private int numExecutors = DescriptorImpl.DEFAULT_NUM_EXECUTORS;
 
     @DataBoundConstructor
-    public ECSCloud(String name, @Nonnull String credentialsId, String cluster) {
+    public ECSCloud(String name, @Nonnull String credentialsId, String assumedRoleArn, String cluster) {
         super(name);
         this.credentialsId = credentialsId;
+        this.assumedRoleArn = assumedRoleArn;
         this.cluster = cluster;
     }
 
@@ -105,6 +109,7 @@ public class ECSCloud extends Cloud {
         super(name);
         this.cluster = cluster;
         this.credentialsId = null;
+        this.assumedRoleArn = null;
         this.ecsService = ecsService;
     }
 
@@ -116,7 +121,7 @@ public class ECSCloud extends Cloud {
 
     synchronized ECSService getEcsService() {
         if (ecsService == null) {
-            ecsService = new ECSService(credentialsId, regionName);
+            ecsService = new ECSService(credentialsId, assumedRoleArn, regionName);
         }
         return ecsService;
     }
@@ -155,9 +160,18 @@ public class ECSCloud extends Cloud {
         return regionName;
     }
 
+    public String getAssumedRoleArn() {
+        return assumedRoleArn;
+    }
+
     @DataBoundSetter
     public void setRegionName(String regionName) {
         this.regionName = regionName;
+    }
+
+    @DataBoundSetter
+    public void setAssumedRoleArn(String assumedRoleArn) {
+        this.assumedRoleArn = assumedRoleArn;
     }
 
     public String getTunnel() {
@@ -196,6 +210,25 @@ public class ECSCloud extends Cloud {
 
     public boolean canProvision(String label) {
         return getTemplate(label) != null;
+    }
+
+    public int getProvisioningCapacity(int excessWorkload, int onlineExecutors, int connectingExecutors) {
+        // When maxAgents is zero don't limit the number of agents available for provisioning.
+        if (maxAgents == 0) {
+            return excessWorkload;
+        }
+        try {
+            int currentAgentCapacity = Math.subtractExact(Math.addExact(onlineExecutors, connectingExecutors), maxAgents);
+        } catch (ArithmeticException e) {
+            LOGGER.log(Level.WARNING, "Overflow encountered when calculating agent capacity.", e);
+            // Where an overflow is detected the safest thing to do is probably return zero here so as not to compound
+            // the problem.
+            return 0;
+        }
+        int currentAgentCapacity = (maxAgents - (onlineExecutors + connectingExecutors));
+        // Return the lowest value between excessWorkload and currentAgentCapacity, with zero being the minimum returned
+        // value.
+        return Math.max(0, Math.min(excessWorkload, currentAgentCapacity));
     }
 
     private ECSTaskTemplate getTemplate(Label label) {
@@ -259,7 +292,7 @@ public class ECSCloud extends Cloud {
                                 Computer.threadPoolForRemoting.submit(
                                         new ProvisioningCallback(merged, agentName)
                                 ),
-                                1
+                                numExecutors
                         )
                 );
             }
@@ -335,6 +368,15 @@ public class ECSCloud extends Cloud {
         this.maxCpu = maxCpu;
     }
 
+    public int getNumExecutors() {
+        return numExecutors;
+    }
+
+    @DataBoundSetter
+    public void setNumExecutors(int numExecutors) {
+        this.numExecutors = numExecutors;
+    }
+
     public int getMaxMemory() {
         return maxMemory;
     }
@@ -351,6 +393,15 @@ public class ECSCloud extends Cloud {
     @DataBoundSetter
     public void setMaxMemoryReservation(int maxMemoryReservation) {
         this.maxMemoryReservation = maxMemoryReservation;
+    }
+
+    public int getMaxAgents() {
+        return maxAgents;
+    }
+
+    @DataBoundSetter
+    public void setMaxAgents(int maxAgents) {
+        this.maxAgents = maxAgents;
     }
 
     public void addTemplate(ECSTaskTemplate taskTemplate) {
@@ -437,6 +488,8 @@ public class ECSCloud extends Cloud {
         public static final int DEFAULT_TASK_POLLING_INTERVAL_IN_SECONDS = 1;
         public static final String DEFAULT_ALLOWED_OVERRIDES = "";
         private static String CLOUD_NAME_PATTERN = "[a-z|A-Z|0-9|_|-]{1,127}";
+        private static final int DEFAULT_MAXIMUM_AGENTS = 0; //Unlimited
+        private static final int DEFAULT_NUM_EXECUTORS = 1;
 
         @Override
         public String getDisplayName() {
@@ -455,8 +508,8 @@ public class ECSCloud extends Cloud {
             return options;
         }
 
-        public ListBoxModel doFillClusterItems(@QueryParameter String credentialsId, @QueryParameter String regionName) {
-            ECSService ecsService = new ECSService(credentialsId, regionName);
+        public ListBoxModel doFillClusterItems(@QueryParameter String credentialsId, @QueryParameter String assumedRoleArn, @QueryParameter String regionName) {
+            ECSService ecsService = new ECSService(credentialsId, assumedRoleArn, regionName);
             try {
                 final AmazonECS client = ecsService.getAmazonECSClient();
                 final List<String> allClusterArns = new ArrayList<String>();
